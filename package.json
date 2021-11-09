@@ -29,5 +29,7 @@
     "webpack-dev-server": "^4.3.0",
     "webpack-glsl-loader": "^1.0.1"
   },
-  "dependencies": {}
+  "dependencies": {
+    "types-fourier-transform": "^1.1.5"
+  }
 }
