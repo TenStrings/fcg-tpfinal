@@ -25,7 +25,7 @@ const cameraTrans: {
     position: PositionComponent,
 } = {
   rotation: { x: 0, y: 0, z: 0 },
-  position: { x: 0, y: 0, z: 0 }
+  position: { x: 0, y: 0, z: -3 }
 }
 
 let program: Program
@@ -39,13 +39,25 @@ export type Program = {
   uniforms: UniformLocations,
 }
 
-type UniformsK = 'mvp'
+type UniformsK = 'mvp' | 'mv' | 'mn' | 'lightDir' | 'shininess'
 
 type UniformLocations = Record<UniformsK, WebGLUniformLocation>
-type UniformValues = Record<UniformsK, Float32Array>
+// type UniformValues = Record<UniformsK, Float32Array>
+
+type UniformValues = {
+    mvp: Float32Array,
+    mv: Float32Array,
+    mn: Float32Array,
+    lightDir: Float32Array,
+    shininess: number
+}
 
 function setUniforms (p: Program, values: UniformValues) {
   gl.uniformMatrix4fv(p.uniforms.mvp, false, values.mvp)
+  gl.uniformMatrix4fv(p.uniforms.mv, false, values.mv)
+  gl.uniformMatrix3fv(p.uniforms.mn, false, values.mn)
+  gl.uniform3f(p.uniforms.lightDir, values.lightDir[0], values.lightDir[1], values.lightDir[2])
+  gl.uniform1f(p.uniforms.shininess, values.shininess)
 }
 
 type PositionComponent = { x: number, y: number, z: number}
@@ -70,7 +82,12 @@ const primitives: Primitives = { cube: undefined }
 
 const components: EComponents[] = []
 
+const lightPos = new Float32Array([0, 0, 10])
+const shininess = 16
+
 function render (comps: EComponents[], gl: WebGL2RenderingContext, view: Float32Array) {
+  const lightDir = lightPos
+
   comps.forEach(comp => {
     const render = primitives[comp.render]
 
@@ -82,8 +99,7 @@ function render (comps: EComponents[], gl: WebGL2RenderingContext, view: Float32
     const rotationY = rotateYMatrix(comp.rotation.y)
     const rotationZ = rotateZMatrix(comp.rotation.z)
 
-    const mvp = matrixArrayMult([
-      projection,
+    const mv = matrixArrayMult([
       view,
       translation,
       rotationX,
@@ -92,11 +108,19 @@ function render (comps: EComponents[], gl: WebGL2RenderingContext, view: Float32
       scale
     ])
 
+    const mvp = matrixArrayMult([
+      projection,
+      mv
+    ])
+
+    // TODO: why does this work?
+    const mn = new Float32Array([mv[0], mv[1], mv[2], mv[4], mv[5], mv[6], mv[8], mv[9], mv[10]])
+
     gl.useProgram(render.program.id)
 
     gl.bindVertexArray(render.vao)
 
-    setUniforms(program, { mvp })
+    setUniforms(program, { mvp, mv, mn, lightDir, shininess })
 
     gl.drawElements(gl.TRIANGLES, render.count, gl.UNSIGNED_SHORT, 0)
   })
@@ -251,7 +275,11 @@ window.onload = function () {
   program = {
     id: programId,
     uniforms: {
-      mvp: gl.getUniformLocation(programId, 'mvp')
+      mvp: gl.getUniformLocation(programId, 'mvp'),
+      mv: gl.getUniformLocation(programId, 'mv'),
+      mn: gl.getUniformLocation(programId, 'mn'),
+      lightDir: gl.getUniformLocation(programId, 'lightDir'),
+      shininess: gl.getUniformLocation(programId, 'shininess')
     }
   }
 
@@ -287,9 +315,9 @@ window.onload = function () {
     const pos = start + (step * i)
     components.push({
       render: 'cube',
-      position: { x: pos, y: 0, z: -5 },
+      position: { x: pos, y: -1.5, z: -5 },
       rotation: { x: 0 * Math.PI, y: (3 / 2) * Math.PI, z: 0 * Math.PI },
-      scale: { x: 0.09, y: 0, z: 0.1 }
+      scale: { x: 0.09, y: 0.5, z: 0.1 }
     })
   }
 

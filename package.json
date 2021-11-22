@@ -32,6 +32,7 @@
   },
   "dependencies": {
     "dsp.js": "^1.0.1",
+    "gl-matrix": "^3.4.3",
     "types-fourier-transform": "^1.1.5",
     "web-audio-beat-detector": "^8.1.22"
   }
