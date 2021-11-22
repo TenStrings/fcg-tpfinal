@@ -3,13 +3,13 @@
 precision highp float;
 out vec4 FragColor;
 
-in vec4 vColor;
 in vec3 normCoord;
 in vec4 vertCoord;
 
 uniform mat3 mn;
 uniform vec3 lightDir;
 uniform float shininess;
+uniform vec3 color;
 
 void main()
 {
@@ -23,9 +23,9 @@ void main()
     float cos_omega = dot(n, h);
 
     vec4 I = vec4(1.0, 1.0, 1.0, 1.0);
-    vec4 K_d = vec4(1.0, 0.0, 0.5, 1.0);
-    // vec4 K_d = vColor;
-    vec4 I_a = vec4(0.0, 0.2, 0.0, 0.0);
+    // vec4 K_d = vec4(1.0, 0.0, 0.5, 1.0);
+    vec4 K_d = vec4(color, 1.0);
+    vec4 I_a = vec4(0.0, 0.1, 0.1, 0.0);
 
     vec4 K_s = vec4(1.0, 1.0, 1.0, 1.0);
 

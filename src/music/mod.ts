@@ -66,7 +66,7 @@ export function extract_beat () : Promise<ProcessedAudio> {
         console.log('estimating tempo')
         const g = await guess(buffer)
 
-        const colors = extractColors(rawBuffer)
+        const colors = extractColors(decodedBuffer)
 
         resolve({ tempoEstimation: g as unknown as TempoEstimation, rawBuffer: rawBuffer, colors })
       }
@@ -76,18 +76,29 @@ export function extract_beat () : Promise<ProcessedAudio> {
   })
 }
 
-function extractColors (rawBuffer: ArrayBuffer) {
-  const buffer = new Uint8Array(rawBuffer)
-  const fftSize = 4096
+function extractColors (rawBuffer: AudioBuffer) {
+  const channel0 = rawBuffer.getChannelData(0)
+  const channel1 = rawBuffer.getChannelData(1)
 
+  const mixRaw = []
+
+  for (let i = 0; i < rawBuffer.length; ++i) {
+    mixRaw.push((channel0[i] + channel1[i]) / 2)
+  }
+
+  const buffer = new Float32Array(mixRaw)
+
+  const fftSize = 4096
   const windows = []
 
-  for (let i = 0; i < buffer.length; i += fftSize * 2) {
+  console.log(buffer.length)
+
+  for (let i = 0; i < buffer.length; i += fftSize) {
     // take double the size because it's stereo
-    const buf = buffer.subarray(i, i + fftSize * 2)
+    const signal = buffer.subarray(i, i + fftSize)
 
     // mix down to mono to have a single fft
-    const signal = dsp.DSP.deinterleave(dsp.DSP.MIX, buf)
+    // const signal = dsp.DSP.deinterleave(dsp.DSP.MIX, buf)
 
     const fft = new dsp.FFT(fftSize, sampleRate)
     if (signal.length == fftSize) {
@@ -101,6 +112,7 @@ function extractColors (rawBuffer: ArrayBuffer) {
   }
 
   console.log('finished extraction')
+  console.log(`buffer lenght is ${buffer.length}`)
   console.log(windows.length)
   console.log(windows[0].length)
   console.log(fCoeff(2047, 4096))

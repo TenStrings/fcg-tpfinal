@@ -17,6 +17,7 @@ let audio: HTMLMediaElement | undefined
 
 let bmp: number | undefined
 let bmp_offset: number | undefined
+let colors: number[][] | undefined
 
 let projection = id
 
@@ -39,7 +40,7 @@ export type Program = {
   uniforms: UniformLocations,
 }
 
-type UniformsK = 'mvp' | 'mv' | 'mn' | 'lightDir' | 'shininess'
+type UniformsK = 'mvp' | 'mv' | 'mn' | 'lightDir' | 'shininess' | 'color'
 
 type UniformLocations = Record<UniformsK, WebGLUniformLocation>
 // type UniformValues = Record<UniformsK, Float32Array>
@@ -49,7 +50,8 @@ type UniformValues = {
     mv: Float32Array,
     mn: Float32Array,
     lightDir: Float32Array,
-    shininess: number
+    shininess: number,
+    color: Float32Array,
 }
 
 function setUniforms (p: Program, values: UniformValues) {
@@ -58,6 +60,7 @@ function setUniforms (p: Program, values: UniformValues) {
   gl.uniformMatrix3fv(p.uniforms.mn, false, values.mn)
   gl.uniform3f(p.uniforms.lightDir, values.lightDir[0], values.lightDir[1], values.lightDir[2])
   gl.uniform1f(p.uniforms.shininess, values.shininess)
+  gl.uniform3f(p.uniforms.color, values.color[0], values.color[1], values.color[2])
 }
 
 type PositionComponent = { x: number, y: number, z: number}
@@ -84,6 +87,46 @@ const components: EComponents[] = []
 
 const lightPos = new Float32Array([0, 0, 10])
 const shininess = 16
+let color : Float32Array = new Float32Array([0.5, 0.5, 0.5])
+
+function setColor (currentColors: number[]) {
+  function addV (a: Float32Array, b: Float32Array) {
+    a[0] += b[0]
+    a[1] += b[1]
+    a[2] += b[2]
+  }
+
+  function scale (a: Float32Array, scalar: number) {
+    a[0] *= scalar
+    a[1] *= scalar
+    a[2] *= scalar
+  }
+
+  const palette = [
+    new Float32Array([1.0, 0.1, 0.0]),
+    new Float32Array([0.0, 0.2, 0.5]),
+    new Float32Array([0.0, 0.3, 0.5]),
+    new Float32Array([0.1, 0.4, 0.5]),
+    new Float32Array([0.2, 0.5, 0.0]),
+    new Float32Array([0.3, 0.6, 0.8]),
+    new Float32Array([0.4, 0.7, 0.1]),
+    new Float32Array([0.5, 0.8, 0.1]),
+    new Float32Array([0.6, 0.9, 0.5]),
+    new Float32Array([0.7, 0.1, 0.4]),
+    new Float32Array([0.8, 0.2, 0.3]),
+    new Float32Array([0.9, 0.3, 0.2])
+  ]
+
+  for (let i = 0; i < 12; i++) {
+    scale(palette[i], currentColors[i])
+  }
+
+  for (let i = 1; i < 12; ++i) {
+    addV(palette[0], palette[i])
+  }
+
+  color = palette[0]
+}
 
 function render (comps: EComponents[], gl: WebGL2RenderingContext, view: Float32Array) {
   const lightDir = lightPos
@@ -120,7 +163,7 @@ function render (comps: EComponents[], gl: WebGL2RenderingContext, view: Float32
 
     gl.bindVertexArray(render.vao)
 
-    setUniforms(program, { mvp, mv, mn, lightDir, shininess })
+    setUniforms(program, { mvp, mv, mn, lightDir, shininess, color })
 
     gl.drawElements(gl.TRIANGLES, render.count, gl.UNSIGNED_SHORT, 0)
   })
@@ -176,6 +219,10 @@ function draw (analyser: AnalyserNode, dataArray: Uint8Array, gl: WebGL2Renderin
     // console.log(`pos is ${pos}`)
 
     components[oscillator].position.x = pos
+
+    console.log(colors.length)
+
+    setColor(colors[Math.floor((audio.currentTime * 44100) / 4096)])
   }
 
   const translation = matrixTrans(cameraTrans.position.x, cameraTrans.position.y, cameraTrans.position.z)
@@ -252,6 +299,8 @@ window.onload = function () {
     bmp = guess.tempo
     bmp_offset = guess.offset
 
+    colors = result.colors
+
     console.log('creating blob')
 
     console.log(result.rawBuffer)
@@ -279,7 +328,8 @@ window.onload = function () {
       mv: gl.getUniformLocation(programId, 'mv'),
       mn: gl.getUniformLocation(programId, 'mn'),
       lightDir: gl.getUniformLocation(programId, 'lightDir'),
-      shininess: gl.getUniformLocation(programId, 'shininess')
+      shininess: gl.getUniformLocation(programId, 'shininess'),
+      color: gl.getUniformLocation(programId, 'color')
     }
   }
 
@@ -311,7 +361,7 @@ window.onload = function () {
   const end = 8
   const step = (end - start) / bufferLength
 
-  for (let i = 0; i < bufferLength; ++i) {
+  for (let i = 0; i < bufferLength - 1; ++i) {
     const pos = start + (step * i)
     components.push({
       render: 'cube',
