@@ -8,10 +8,15 @@ import {
 } from
   './algebra'
 import { initShaders } from './shader_helpers'
+import { extract_beat } from './music/mod'
 
 const audioContext = new window.AudioContext()
 const fftSize = 256
 let playing = false
+let audio: HTMLMediaElement | undefined
+
+let bmp: number | undefined
+let bmp_offset: number | undefined
 
 let projection = id
 
@@ -26,6 +31,8 @@ const cameraTrans: {
 let program: Program
 
 let gl: WebGL2RenderingContext | undefined
+
+let oscillator: number | any
 
 export type Program = {
   id: WebGLProgram,
@@ -104,11 +111,47 @@ function draw (analyser: AnalyserNode, dataArray: Uint8Array, gl: WebGL2Renderin
 
   analyser.getByteFrequencyData(dataArray)
 
+  const bms = bmp / 60
+
+  const freq = 1 / bms
+  const step = (2 / freq)
+
   if (playing) {
+    const currentTime = audio.currentTime - bmp_offset
+    const d = (currentTime % freq)
+
     for (let i = 0; i < dataArray.length; ++i) {
       components[i].scale.y = (dataArray[i] / 256) * 3
-      // components[i].rotation.y = (components[i].rotation.y + 0.1) % (2 * Math.PI)
+      components[i].position.y = components[i].scale.y - 3
+
+      if (d < 0.1) {
+        components[i].scale.z = 0.12
+      } else {
+        components[i].scale.z = 0.1
+      }
     }
+
+    const even = Math.floor(currentTime % (freq / 2)) == 0
+
+    const normalized = d * step
+
+    let pos = 1 - normalized
+
+    if (even) {
+      pos *= -1
+    }
+
+    pos *= 0.25
+
+    // if (d == 0) {
+    //   console.log(`currentTime is ${currentTime}`)
+    //   console.log(`bms is ${bms}`)
+    // }
+    // console.log(`d is ${d}`)
+    // console.log(`normalized is ${normalized}`)
+    // console.log(`pos is ${pos}`)
+
+    components[oscillator].position.x = pos
   }
 
   const translation = matrixTrans(cameraTrans.position.x, cameraTrans.position.y, cameraTrans.position.z)
@@ -178,6 +221,28 @@ function updateCanvasSize (gl: WebGLRenderingContext, canvas: HTMLCanvasElement)
 window.onload = function () {
   const canvas = document.getElementById('view') as HTMLCanvasElement
 
+  extract_beat().then(result => {
+    const guess = result.tempoEstimation
+    console.log(guess)
+
+    bmp = guess.tempo
+    bmp_offset = guess.offset
+
+    console.log('creating blob')
+
+    console.log(result.rawBuffer)
+    const blob = new Blob([result.rawBuffer], { type: 'audio/mp3' })
+    const url = window.URL.createObjectURL(blob)
+
+    console.log('setting blob as src')
+
+    audio.src = url
+    audio.controls = true
+
+    const loadingLabel = document.getElementById('loading') as HTMLLabelElement
+    loadingLabel.hidden = true
+  })
+
   gl = initWebGL(canvas)
   const programId = initShaders(vshader, fshader, gl)
 
@@ -198,13 +263,14 @@ window.onload = function () {
 
   console.log(`sample rate: ${audioContext.sampleRate}`)
 
-  const audio = document.getElementById('audio-source') as HTMLMediaElement
+  audio = document.getElementById('audio-source') as HTMLMediaElement
   const track = audioContext.createMediaElementSource(audio)
 
   const analyser = audioContext.createAnalyser()
   analyser.fftSize = fftSize
 
   const freqStep = ((audioContext.sampleRate / 2) / analyser.frequencyBinCount)
+  console.log(`the other freqStep is ${freqStep}`)
   const maxFrequency = 5000 / freqStep
 
   const bufferLength = maxFrequency
@@ -213,7 +279,7 @@ window.onload = function () {
 
   track.connect(analyser).connect(audioContext.destination)
 
-  const start = -6
+  const start = -8
   const end = 8
   const step = (end - start) / bufferLength
 
@@ -226,6 +292,17 @@ window.onload = function () {
       scale: { x: 0.09, y: 0, z: 0.1 }
     })
   }
+
+  oscillator = components.length
+
+  components.push(
+    {
+      render: 'cube',
+      position: { x: 0, y: 4.5, z: -15 },
+      rotation: { x: 0 * Math.PI, y: 0 * Math.PI, z: 0 * Math.PI },
+      scale: { x: 1, y: 2, z: 0.3 }
+    }
+  )
 
   projection = perspectiveMatrix(canvas.width / canvas.height)
   draw(analyser, dataArray, gl, components)
@@ -272,10 +349,9 @@ window.onload = function () {
 function htmlComponents () {
   const audio = document.createElement('audio')
 
-  audio.src = song
-  audio.controls = true
+  audio.src = undefined
+  audio.controls = false
   audio.id = 'audio-source'
-  audio.autoplay = true
 
   return [audio]
 }

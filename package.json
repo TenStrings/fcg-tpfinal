@@ -31,6 +31,8 @@
     "webpack-merge": "^5.8.0"
   },
   "dependencies": {
-    "types-fourier-transform": "^1.1.5"
+    "dsp.js": "^1.0.1",
+    "types-fourier-transform": "^1.1.5",
+    "web-audio-beat-detector": "^8.1.22"
   }
 }
