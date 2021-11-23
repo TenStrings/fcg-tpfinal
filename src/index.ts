@@ -9,6 +9,7 @@ import {
   './algebra'
 import { initShaders } from './shader_helpers'
 import { extract_beat } from './music/mod'
+import './stylesheets/index.css'
 
 const audioContext = new window.AudioContext()
 const fftSize = 256
@@ -18,6 +19,7 @@ let audio: HTMLMediaElement | undefined
 let bmp: number | undefined
 let bmp_offset: number | undefined
 let colors: number[][] | undefined
+let peaks: Float32Array | undefined
 
 let projection = id
 
@@ -34,6 +36,21 @@ let program: Program
 let gl: WebGL2RenderingContext | undefined
 
 let oscillator: number | any
+
+const currentPalette = [
+  new Float32Array([1.0, 0.0, 0.0]),
+  new Float32Array([0.0, 0.2, 0.5]),
+  new Float32Array([0.0, 0.3, 0.5]),
+  new Float32Array([0.1, 0.4, 0.5]),
+  new Float32Array([0.2, 0.5, 0.0]),
+  new Float32Array([0.3, 0.6, 0.8]),
+  new Float32Array([0.4, 0.7, 0.1]),
+  new Float32Array([0.5, 0.8, 0.1]),
+  new Float32Array([0.6, 0.9, 0.5]),
+  new Float32Array([0.7, 0.1, 0.4]),
+  new Float32Array([0.8, 0.2, 0.3]),
+  new Float32Array([0.9, 0.3, 0.2])
+]
 
 export type Program = {
   id: WebGLProgram,
@@ -102,20 +119,7 @@ function setColor (currentColors: number[]) {
     a[2] *= scalar
   }
 
-  const palette = [
-    new Float32Array([1.0, 0.1, 0.0]),
-    new Float32Array([0.0, 0.2, 0.5]),
-    new Float32Array([0.0, 0.3, 0.5]),
-    new Float32Array([0.1, 0.4, 0.5]),
-    new Float32Array([0.2, 0.5, 0.0]),
-    new Float32Array([0.3, 0.6, 0.8]),
-    new Float32Array([0.4, 0.7, 0.1]),
-    new Float32Array([0.5, 0.8, 0.1]),
-    new Float32Array([0.6, 0.9, 0.5]),
-    new Float32Array([0.7, 0.1, 0.4]),
-    new Float32Array([0.8, 0.2, 0.3]),
-    new Float32Array([0.9, 0.3, 0.2])
-  ]
+  const palette: Float32Array[] = currentPalette.map(inner => inner.slice())
 
   for (let i = 0; i < 12; i++) {
     scale(palette[i], currentColors[i])
@@ -191,8 +195,8 @@ function draw (analyser: AnalyserNode, dataArray: Uint8Array, gl: WebGL2Renderin
       components[i].scale.y = (dataArray[i] / 256) * 3
       components[i].position.y = components[i].scale.y - 3
 
-      if (d < 0.1) {
-        components[i].scale.z = 0.12
+      if (peaks[Math.round(audio.currentTime * 44100)] == 1.0) {
+        components[i].scale.z = 0.13
       } else {
         components[i].scale.z = 0.1
       }
@@ -210,17 +214,7 @@ function draw (analyser: AnalyserNode, dataArray: Uint8Array, gl: WebGL2Renderin
 
     pos *= 0.25
 
-    // if (d == 0) {
-    //   console.log(`currentTime is ${currentTime}`)
-    //   console.log(`bms is ${bms}`)
-    // }
-    // console.log(`d is ${d}`)
-    // console.log(`normalized is ${normalized}`)
-    // console.log(`pos is ${pos}`)
-
     components[oscillator].position.x = pos
-
-    console.log(colors.length)
 
     setColor(colors[Math.floor((audio.currentTime * 44100) / 4096)])
   }
@@ -280,8 +274,8 @@ function updateCanvasSize (gl: WebGLRenderingContext, canvas: HTMLCanvasElement)
   // canvas.style.height = height + 'px'
 
   // 2. Lo seteamos en el contexto WebGL
-  console.log(canvas.width)
-  console.log(canvas.height)
+  console.log(`canvas width ${canvas.clientWidth}`)
+  console.log(`canvas height ${canvas.clientHeight}`)
   gl.viewport(0, 0, canvas.width, canvas.height)
 
   // 3. Cambian las matrices de proyección, hay que actualizarlas
@@ -300,14 +294,10 @@ window.onload = function () {
     bmp_offset = guess.offset
 
     colors = result.colors
+    peaks = result.peaks
 
-    console.log('creating blob')
-
-    console.log(result.rawBuffer)
     const blob = new Blob([result.rawBuffer], { type: 'audio/mp3' })
     const url = window.URL.createObjectURL(blob)
-
-    console.log('setting blob as src')
 
     audio.src = url
     audio.controls = true
@@ -333,13 +323,11 @@ window.onload = function () {
     }
   }
 
-  updateCanvasSize(gl, canvas)
+  // updateCanvasSize(gl, canvas)
 
   gl.clear(gl.COLOR_BUFFER_BIT)
 
   primitives.cube = cubeVAO(gl, program)
-
-  console.log(`sample rate: ${audioContext.sampleRate}`)
 
   audio = document.getElementById('audio-source') as HTMLMediaElement
   const track = audioContext.createMediaElementSource(audio)
@@ -348,7 +336,6 @@ window.onload = function () {
   analyser.fftSize = fftSize
 
   const freqStep = ((audioContext.sampleRate / 2) / analyser.frequencyBinCount)
-  console.log(`the other freqStep is ${freqStep}`)
   const maxFrequency = 5000 / freqStep
 
   const bufferLength = maxFrequency
@@ -365,7 +352,7 @@ window.onload = function () {
     const pos = start + (step * i)
     components.push({
       render: 'cube',
-      position: { x: pos, y: -1.5, z: -5 },
+      position: { x: pos, y: -3.5, z: -5 },
       rotation: { x: 0 * Math.PI, y: (3 / 2) * Math.PI, z: 0 * Math.PI },
       scale: { x: 0.09, y: 0.5, z: 0.1 }
     })
@@ -410,7 +397,6 @@ window.onload = function () {
     mouseDown = undefined
   })
 
-  // Si se mueve el mouse, actualizo las matrices de rotación
   canvas.addEventListener('mousemove', function (event) {
     if (mouseDown !== undefined) {
       let { cx, cy } = mouseDown
@@ -422,18 +408,44 @@ window.onload = function () {
       cy = event.clientY
     }
   })
+
+  for (let i = 0; i < 12; i++) {
+    const picker = document.getElementById(`color${i}`) as HTMLInputElement
+    const color = currentPalette[i]
+
+    const bytes = []
+
+    for (let j = 0; j < 3; ++j) {
+      bytes.push(Math.round(color[j] * 255))
+    }
+
+    picker.value = '#' + hex(bytes)
+
+    picker.addEventListener('change', function () {
+      const bytes = new Float32Array(hexStringToBytes(picker.value.slice(1)))
+      currentPalette[i] = bytes.map(b => b / 256)
+    })
+  }
 }
 
-function htmlComponents () {
-  const audio = document.createElement('audio')
-
-  audio.src = undefined
-  audio.controls = false
-  audio.id = 'audio-source'
-
-  return [audio]
+function hexStringToBytes (s: string) {
+  const bytes = []
+  for (let c = 0; c < s.length; c += 2) { bytes.push(parseInt(s.substr(c, 2), 16)) }
+  return bytes
 }
 
-htmlComponents().forEach(c => {
-  document.body.appendChild(c)
-})
+const byteToHex: string[] = []
+
+for (let n = 0; n <= 0xff; ++n) {
+  const hexOctet = ('0' + n.toString(16)).slice(-2)
+  byteToHex.push(hexOctet)
+}
+
+function hex (arr: number[]) {
+  const buff = new Uint8Array(arr)
+  const hexOctets = []
+
+  for (let i = 0; i < buff.length; ++i) { hexOctets.push(byteToHex[buff[i]]) }
+
+  return hexOctets.join('')
+}

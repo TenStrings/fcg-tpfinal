@@ -12,17 +12,17 @@ type ProcessedAudio = {
     rawBuffer: ArrayBuffer,
     tempoEstimation: TempoEstimation,
     colors: number[][]
+    peaks: Float32Array,
 }
 
 const sampleRate = 44100
+const fftSize = 4096
 
 export function extract_beat () : Promise<ProcessedAudio> {
   const request = new XMLHttpRequest()
   console.log('getting raw audio')
   request.open('GET', song, true)
   request.responseType = 'arraybuffer'
-
-  console.log(dsp)
 
   return new Promise((resolve, reject) => {
     request.onload = function () {
@@ -33,7 +33,6 @@ export function extract_beat () : Promise<ProcessedAudio> {
       // TODO: probably can avoid cloning the buffer by changing the order of
       // things or something
       const rawBuffer = request.response.slice()
-      console.log(rawBuffer)
 
       let decodedBuffer: undefined | AudioBuffer
 
@@ -41,9 +40,6 @@ export function extract_beat () : Promise<ProcessedAudio> {
         // so, buffer here holds the entire song... I should pass this to the
         // main window and reproduce it from there but this means, I can also
         // run fft over this I think, and actually... Can I do windowing?
-        console.log('decoding audio')
-        console.log(buffer)
-        console.log('setting buffer source')
         const source = offlineContext.createBufferSource()
         source.buffer = buffer
 
@@ -56,19 +52,19 @@ export function extract_beat () : Promise<ProcessedAudio> {
       }, reject)
 
       offlineContext.oncomplete = async function (event) {
-        console.log('completed decoding')
-        console.log(decodedBuffer)
         const buffer = event.renderedBuffer
 
-        console.log('finished processing')
-        console.log(buffer)
-
-        console.log('estimating tempo')
         const g = await guess(buffer)
 
         const colors = extractColors(decodedBuffer)
+        const peaks = extractPeaks(decodedBuffer)
 
-        resolve({ tempoEstimation: g as unknown as TempoEstimation, rawBuffer: rawBuffer, colors })
+        resolve({
+          tempoEstimation: g as unknown as TempoEstimation,
+          rawBuffer,
+          colors,
+          peaks
+        })
       }
     }
 
@@ -76,50 +72,70 @@ export function extract_beat () : Promise<ProcessedAudio> {
   })
 }
 
-function extractColors (rawBuffer: AudioBuffer) {
-  const channel0 = rawBuffer.getChannelData(0)
-  const channel1 = rawBuffer.getChannelData(1)
+function getMonoBuffer (buffer: AudioBuffer) {
+  const channel0 = buffer.getChannelData(0)
+  const channel1 = buffer.getChannelData(1)
 
   const mixRaw = []
 
-  for (let i = 0; i < rawBuffer.length; ++i) {
+  for (let i = 0; i < buffer.length; ++i) {
     mixRaw.push((channel0[i] + channel1[i]) / 2)
   }
 
-  const buffer = new Float32Array(mixRaw)
+  return new Float32Array(mixRaw)
+}
 
-  const fftSize = 4096
-  const windows = []
-
-  console.log(buffer.length)
+function fftWindows (buffer: Float32Array) {
+  const windows: number[][] = []
 
   for (let i = 0; i < buffer.length; i += fftSize) {
     // take double the size because it's stereo
     const signal = buffer.subarray(i, i + fftSize)
 
-    // mix down to mono to have a single fft
-    // const signal = dsp.DSP.deinterleave(dsp.DSP.MIX, buf)
-
     const fft = new dsp.FFT(fftSize, sampleRate)
+
     if (signal.length == fftSize) {
       fft.forward(signal)
 
       windows.push(fft.spectrum)
     } else {
-      // TODO: do DFT? but I'm not sure if it will work with the rest of the code tbh
-      console.log('ommitting last chunk because of size u.u')
+      // TODO: do DFT? but I'm not sure if it will work with the rest of the
+      // code tbh for now, just duplicate the last one
+      windows.push(windows[windows.length - 1])
     }
   }
 
-  console.log('finished extraction')
-  console.log(`buffer lenght is ${buffer.length}`)
-  console.log(windows.length)
-  console.log(windows[0].length)
-  console.log(fCoeff(2047, 4096))
+  return windows
+}
+
+function extractPeaks (decodedBuffer: AudioBuffer) {
+  console.log('extracting peaks')
+  const buffer = getMonoBuffer(decodedBuffer)
+  const resonance = 1
+  const lowpass = new dsp.IIRFilter(dsp.DSP.LOWPASS, 150, resonance, sampleRate)
+
+  lowpass.process(buffer)
+
+  // TODO: does this work?
+
+  const sorted = buffer.map(Math.abs).filter(e => !isNaN(e) && Math.abs(e) != Infinity).sort()
+
+  const threshold = sorted[Math.round(sorted.length * (8 / 10))]
+
+  const peaks = buffer.map(sample => Math.abs(sample) > threshold ? 1.0 : 0.0)
+
+  console.log(`peak extraction threshold ${threshold}`)
+  console.log(`total peaks ${peaks.reduce((a, b) => a + b)} of ${buffer.length} samples`)
+
+  return peaks
+}
+
+function extractColors (decodedBuffer: AudioBuffer) {
+  const buffer = getMonoBuffer(decodedBuffer)
+
+  const windows = fftWindows(buffer)
 
   const labels = labelFftCoefficients()
-
-  console.log(labels[69])
 
   const spectoLf = windows.map(spectrum => {
     const lf = []
@@ -161,10 +177,6 @@ function extractColors (rawBuffer: AudioBuffer) {
     return chroma.map(e => e / sum)
   })
 
-  // console.log(spectoLf[100])
-  // console.log(chromatograms[100])
-  // console.log(colors[100])
-
   return colors
 }
 
@@ -202,6 +214,7 @@ function fCoeffInv (freq: Frequency, fftSize: number) {
 
 // TODO: mnemoize this, (or lazy init...)
 type Frequency = number
+
 function labelFftCoefficients () : Set<number>[] {
   const sets = []
 

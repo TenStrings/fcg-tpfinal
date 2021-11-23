@@ -1,11 +1,67 @@
 <!DOCTYPE html>
 <html>
   <head>
-    <meta charset="utf-8" />
+    <meta charset='utf-8' />
     <title>MViz</title>
-    <canvas id='view' width=1024 height=800> </canvas>
-    <label id='loading'> Loading. Please wait. </label>
   </head>
   <body>
+    <div class='wrapper'>
+      <canvas id='view' width=1024 height=800> </canvas>
+      <div class='controls'>
+        <audio id='audio-source' /> </audio>
+        <label id='loading'> Loading. Please wait. </label>
+        <div id='colors'>
+          <b> Color palette </b>
+          <div> 
+            <input id='color0' type='color' />
+            <label class='pitch-class'> C  </label>
+          </div>
+          <div>
+            <input id='color1' type='color' />
+            <label class='pitch-class'> C# </label> 
+          </div>
+          <div>
+            <input id='color2' type='color' />
+            <label class='pitch-class'> D  </label>
+          </div>
+          <div>
+            <input id='color3' type='color' />
+            <label class='pitch-class'> D# </label>
+          </div>
+          <div>
+            <input id='color4' type='color' />
+            <label class='pitch-class'> E  </label>
+          </div>
+          <div>
+            <input id='color5' type='color' />
+            <label class='pitch-class'> F  </label>
+          </div>
+          <div>
+            <input id='color6' type='color' />
+            <label class='pitch-class'> F# </label>
+          </div>
+          <div>
+            <input id='color7' type='color' />
+            <label class='pitch-class'> G  </label>
+          </div>
+          <div>
+            <input id='color8' type='color' />
+            <label class='pitch-class'> G# </label>
+          </div>
+          <div>
+            <input id='color9' type='color' />
+            <label class='pitch-class'> A  </label>
+          </div>
+          <div>
+            <input id='color10' type='color' />
+            <label class='pitch-class'> A# </label>
+          </div>
+          <div>
+            <input id='color11' type='color' />
+            <label class='pitch-class'> B </label>
+          </div>
+        </div>
+      </div>
+    </div>
   </body>
 </html>
