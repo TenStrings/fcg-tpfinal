@@ -1,4 +1,3 @@
-import song from './assets/George Street Shuffle.mp3'
 import fshader from './shaders/fragment.glsl'
 import vshader from './shaders/vertex.glsl'
 import { cubeVAO, RenderComponent } from './cube'
@@ -234,7 +233,7 @@ function draw (analyser: AnalyserNode, dataArray: Uint8Array, gl: WebGL2Renderin
 function initWebGL (canvas: HTMLCanvasElement) {
   // Inicializamos el canvas WebGL
   canvas.oncontextmenu = function () { return false }
-  const gl = canvas.getContext('webgl2', { antialias: false, depth: true })
+  const gl = canvas.getContext('webgl2', { antialias: true, depth: true })
   if (!gl) {
     alert('Imposible inicializar WebGL. Tu navegador quizás no lo soporte.')
     return
@@ -288,7 +287,6 @@ window.onload = function () {
 
   extract_beat().then(result => {
     const guess = result.tempoEstimation
-    console.log(guess)
 
     bmp = guess.tempo
     bmp_offset = guess.offset
@@ -373,6 +371,7 @@ window.onload = function () {
   draw(analyser, dataArray, gl, components)
 
   audio.addEventListener('play', function () {
+    audioContext.resume()
     playing = true
   })
 
