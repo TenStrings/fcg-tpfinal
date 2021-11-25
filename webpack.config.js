@@ -1,12 +1,15 @@
 const path = require('path')
 const HtmlWebpackPlugin = require('html-webpack-plugin')
 
+const PUBLIC_PATH = process.env.PUBLIC_PATH || '/'
+
 module.exports = {
   entry: './src/index.ts',
   output: {
     filename: 'main.js',
     path: path.resolve(__dirname, 'dist'),
-    clean: true
+    clean: true,
+    publicPath: PUBLIC_PATH
   },
   module: {
     rules: [
