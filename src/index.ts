@@ -26,6 +26,7 @@ type State = {
   audioContext: AudioContext,
   analyser: AnalyserNode,
   audio: HTMLMediaElement,
+  oscillator: number,
 }
 
 let state : State | undefined
@@ -81,6 +82,7 @@ async function initState (width: number, height: number, songId: string) : Promi
 
   const analyser = audioContext.createAnalyser()
   analyser.fftSize = 256
+  analyser.smoothingTimeConstant = 0.85
   const track = audioContext.createMediaElementSource(audio)
   track.connect(analyser).connect(audioContext.destination)
 
@@ -90,7 +92,7 @@ async function initState (width: number, height: number, songId: string) : Promi
   statusLabel.innerText = 'Ready'
   const cameraTrans = {
     rotation: { x: 0, y: 0, z: 0 },
-    position: { x: 0, y: 0, z: -3 }
+    position: { x: 0, y: 0, z: -1 }
   }
   const currentPalette = [
     new Float32Array([1.0, 0.0, 0.0]),
@@ -114,39 +116,76 @@ async function initState (width: number, height: number, songId: string) : Promi
   const maxFrequency = 5000 / freqStep
 
   const bufferLength = maxFrequency
-  const start = -8
-  const end = 8
-  const step = (end - start) / bufferLength
+  let xStart = -8
+  let xEnd = -0.5 
+  const xStep = (xEnd - xStart) / bufferLength
+
+  const zStart = -5
+  const zEnd = -8
+  const zStep = Math.abs((zEnd - zStart)) / bufferLength
 
   const dataArray = new Uint8Array(maxFrequency)
 
   const components: EComponents[] = []
 
   for (let i = 0; i < bufferLength - 1; ++i) {
-    const pos = start + (step * i)
+    const xpos = xEnd - (xStep * i)
+    const zpos = zStart + (zStep * i)
+
+    // const z = -1 * Math.sqrt((C ** 2) - (pos ** 2) - 9)
+
+    // (0 -3) -> |(pos, z + 3)|**2 = C**2
+    // pos**2 + (z + 3)**2
+    // pos**2 + z**2 + 9 = C**2
+    // z**2 = C**2 - pos**2 - 9
+    // z = - Math.sqrt(C**2 - pos**2 - 9)
+
     components.push({
       render: 'cube',
-      position: { x: pos, y: -3.5, z: -5 },
-      rotation: { x: 0 * Math.PI, y: (3 / 2) * Math.PI, z: 0 * Math.PI },
+      position: { x: xpos, y: -2.5, z: zpos },
+      rotation: { x: 0 * Math.PI, y: -0.4, z: -0 },
       scale: { x: 0.09, y: 0.5, z: 0.1 }
     })
   }
 
-  oscillator = components.length
+  xStart = 0.5 
+  xEnd = 8
+
+  for (let i = 0; i < bufferLength - 1; ++i) {
+    const xpos = xStart + (xStep * i)
+    const zpos = zStart + (zStep * i)
+
+    // const z = -1 * Math.sqrt((C ** 2) - (pos ** 2) - 9)
+
+    // (0 -3) -> |(pos, z + 3)|**2 = C**2
+    // pos**2 + (z + 3)**2
+    // pos**2 + z**2 + 9 = C**2
+    // z**2 = C**2 - pos**2 - 9
+    // z = - Math.sqrt(C**2 - pos**2 - 9)
+
+    components.push({
+      render: 'cube',
+      position: { x: xpos, y: -2.5, z: zpos },
+      rotation: { x: 0 * Math.PI, y: 0.4, z: 0 },
+      scale: { x: 0.09, y: 0.5, z: 0.2 }
+    })
+  }
+
+  const oscillator = components.length
 
   components.push(
     {
       render: 'cube',
-      position: { x: 0, y: 4.5, z: -15 },
-      rotation: { x: 0 * Math.PI, y: 0 * Math.PI, z: 0 * Math.PI },
-      scale: { x: 1, y: 2, z: 0.3 }
+      position: { x: 0, y: 8, z: -15 },
+      rotation: { x: 0.1, y: 0 * Math.PI, z: 0 * Math.PI },
+      scale: { x: 1, y: 1, z: 0.3 }
     }
   )
 
   const projection = perspectiveMatrix(width / height)
 
-  const lightPos = new Float32Array([0, 0, 10])
-  const shininess = 16
+  const lightPos = new Float32Array([0, 10, 10])
+  const shininess = 10
   const color : Float32Array = new Float32Array([0.5, 0.5, 0.5])
 
   return {
@@ -162,15 +201,14 @@ async function initState (width: number, height: number, songId: string) : Promi
     dataArray,
     audioContext,
     analyser,
-    audio
+    audio,
+    oscillator
   }
 }
 
 let program: Program
 
 let gl: WebGL2RenderingContext | undefined
-
-let oscillator: number | any
 
 export type Program = {
   id: WebGLProgram,
@@ -263,10 +301,10 @@ function render (gl: WebGL2RenderingContext, view: Float32Array) {
     const mv = matrixArrayMult([
       view,
       translation,
+      scale,
       rotationX,
       rotationY,
-      rotationZ,
-      scale
+      rotationZ
     ])
 
     const mvp = matrixArrayMult([
@@ -297,11 +335,6 @@ function render (gl: WebGL2RenderingContext, view: Float32Array) {
 
 function draw (gl: WebGL2RenderingContext) {
   gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT)
-  // Each item in the array represents the decibel value for a specific
-  // frequency. The frequencies are spread linearly from 0 to 1/2 of the sample
-  // rate. For example, for 48000 sample rate, the last item of the array will
-  // represent the decibel value for 24000 Hz.
-
   const dataArray = state.dataArray
 
   state.analyser.getByteFrequencyData(state.dataArray)
@@ -315,14 +348,25 @@ function draw (gl: WebGL2RenderingContext) {
     const currentTime = state.audio.currentTime - state.audioData.tempoEstimation.offset
     const d = (currentTime % freq)
 
+    const zoomingOut = state.cameraTrans.position.z > -4.85;
+
+    if (zoomingOut) {
+      state.cameraTrans.position.z -= 0.004
+    }
+
     for (let i = 0; i < dataArray.length; ++i) {
       state.components[i].scale.y = (dataArray[i] / 256) * 3
       state.components[i].position.y = state.components[i].scale.y - 3
 
-      if (state.audioData.peaks[Math.round(state.audio.currentTime * 44100)] == 1.0) {
-        state.components[i].scale.z = 0.13
+      state.components[i + dataArray.length].scale.y = state.components[i].scale.y
+      state.components[i + dataArray.length].position.y = state.components[i].position.y
+
+      if (state.audioData.peaks[Math.round(state.audio.currentTime * 44100)] == 1.0 && !zoomingOut) {
+        state.components[i].scale.z = 0.12
+        state.components[i + dataArray.length].scale.z = 0.12
       } else {
         state.components[i].scale.z = 0.1
+        state.components[i + dataArray.length].scale.z = 0.1
       }
     }
 
@@ -338,9 +382,10 @@ function draw (gl: WebGL2RenderingContext) {
 
     pos *= 0.15
 
-    state.components[oscillator].position.x = pos
+    state.components[state.oscillator].position.x = pos
 
     state.color = mixColors(state.audioData.colors[Math.floor((state.audio.currentTime * 44100) / 4096)])
+
   }
 
   const translation = matrixTrans(state.cameraTrans.position.x, state.cameraTrans.position.y, state.cameraTrans.position.z)
@@ -443,6 +488,7 @@ window.onload = async function () {
   canvas.addEventListener('wheel', function (event: WheelEvent) {
     const s = 0.3 * event.deltaY / canvas.height
     state.cameraTrans.position.z += -s
+    console.log(state.cameraTrans.position.z)
   })
 
   let mouseDown : { cx: number, cy: number } | undefined
