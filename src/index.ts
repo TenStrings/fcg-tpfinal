@@ -3,31 +3,167 @@ import vshader from './shaders/vertex.glsl'
 import { cubeVAO, RenderComponent } from './cube'
 import {
   rotateXMatrix, rotateYMatrix, rotateZMatrix, matrixTrans, matrixScale,
-  perspectiveMatrix, id, matrixArrayMult
+  perspectiveMatrix, matrixArrayMult
 } from
   './algebra'
 import { initShaders } from './shader_helpers'
-import { extract_beat } from './music/mod'
+import { fetchAndAnalyse, analyseAudio, ProcessedAudio } from './music/mod'
 import './stylesheets/index.css'
+import song0 from './assets/shades-of-spring-by-kevin-macleod-from-filmmusic-io.mp3'
+import song1 from './assets/werq-by-kevin-macleod-from-filmmusic-io.mp3'
 
-const audioContext = new window.AudioContext()
-const fftSize = 256
-let playing = false
-let audio: HTMLMediaElement | undefined
+type State = {
+  audioData: ProcessedAudio,
+  playing: boolean,
+  projection: Float32Array,
+  currentPalette: Float32Array[],
+  components: EComponents[]
+  cameraTrans: { rotation: RotationComponent, position: PositionComponent },
+  lightPos: Float32Array,
+  shininess: number,
+  color: Float32Array,
+  dataArray: Uint8Array,
+  audioContext: AudioContext,
+  analyser: AnalyserNode,
+  audio: HTMLMediaElement,
+}
 
-let bmp: number | undefined
-let bmp_offset: number | undefined
-let colors: number[][] | undefined
-let peaks: Float32Array | undefined
+let state : State | undefined
 
-let projection = id
+const songs: Record<string, string | ArrayBuffer | ProcessedAudio> = {
+  song0: song0,
+  song1: song1
+}
 
-const cameraTrans: {
-    rotation: RotationComponent,
-    position: PositionComponent,
-} = {
-  rotation: { x: 0, y: 0, z: 0 },
-  position: { x: 0, y: 0, z: -3 }
+export const statusLabel = document.getElementById('loading') as HTMLLabelElement
+
+async function initState (width: number, height: number, songId: string) : Promise<State> {
+  console.log('initializing state')
+
+  statusLabel.innerText = 'Analyzing audio'
+
+  const song = songs[songId]
+  let audioData
+
+  if (typeof song === 'string') {
+    audioData = await fetchAndAnalyse(song)
+  } else if (song instanceof ArrayBuffer) {
+    console.log('found array buffer, analysing')
+    audioData = await analyseAudio(song)
+  } else {
+    audioData = song
+  }
+
+  // cache the results just in case
+  songs[songId] = audioData
+
+  // TODO: move this to initState?
+  const blob = new Blob([audioData.rawBuffer], { type: 'audio/mp3' })
+  const url = window.URL.createObjectURL(blob)
+
+  const audioContext = new window.AudioContext()
+
+  const audio = document.createElement('audio')
+  audio.src = url
+  audio.controls = true
+  audio.id = 'audio-source'
+
+  let playing = false
+
+  audio.addEventListener('play', function () {
+    audioContext.resume()
+    playing = true
+  })
+
+  audio.addEventListener('pause', function () {
+    playing = false
+  })
+
+  const analyser = audioContext.createAnalyser()
+  analyser.fftSize = 256
+  const track = audioContext.createMediaElementSource(audio)
+  track.connect(analyser).connect(audioContext.destination)
+
+  const audioHolder = document.getElementById('audio-holder')
+  audioHolder.appendChild(audio)
+
+  statusLabel.innerText = 'Ready'
+  const cameraTrans = {
+    rotation: { x: 0, y: 0, z: 0 },
+    position: { x: 0, y: 0, z: -3 }
+  }
+  const currentPalette = [
+    new Float32Array([1.0, 0.0, 0.0]),
+    new Float32Array([0.0, 0.2, 0.5]),
+    new Float32Array([0.0, 0.3, 0.5]),
+    new Float32Array([0.1, 0.4, 0.5]),
+    new Float32Array([0.2, 0.5, 0.0]),
+    new Float32Array([0.3, 0.6, 0.8]),
+    new Float32Array([0.4, 0.7, 0.1]),
+    new Float32Array([0.5, 0.8, 0.1]),
+    new Float32Array([0.6, 0.9, 0.5]),
+    new Float32Array([0.7, 0.1, 0.4]),
+    new Float32Array([0.8, 0.2, 0.3]),
+    new Float32Array([0.9, 0.3, 0.2])
+  ]
+
+  const sampleRate = 44100
+  const fftSize = 256
+
+  const freqStep = sampleRate / fftSize
+  const maxFrequency = 5000 / freqStep
+
+  const bufferLength = maxFrequency
+  const start = -8
+  const end = 8
+  const step = (end - start) / bufferLength
+
+  const dataArray = new Uint8Array(maxFrequency)
+
+  const components: EComponents[] = []
+
+  for (let i = 0; i < bufferLength - 1; ++i) {
+    const pos = start + (step * i)
+    components.push({
+      render: 'cube',
+      position: { x: pos, y: -3.5, z: -5 },
+      rotation: { x: 0 * Math.PI, y: (3 / 2) * Math.PI, z: 0 * Math.PI },
+      scale: { x: 0.09, y: 0.5, z: 0.1 }
+    })
+  }
+
+  oscillator = components.length
+
+  components.push(
+    {
+      render: 'cube',
+      position: { x: 0, y: 4.5, z: -15 },
+      rotation: { x: 0 * Math.PI, y: 0 * Math.PI, z: 0 * Math.PI },
+      scale: { x: 1, y: 2, z: 0.3 }
+    }
+  )
+
+  const projection = perspectiveMatrix(width / height)
+
+  const lightPos = new Float32Array([0, 0, 10])
+  const shininess = 16
+  const color : Float32Array = new Float32Array([0.5, 0.5, 0.5])
+
+  return {
+    audioData,
+    playing,
+    projection,
+    currentPalette,
+    components,
+    cameraTrans,
+    lightPos,
+    shininess,
+    color,
+    dataArray,
+    audioContext,
+    analyser,
+    audio
+  }
 }
 
 let program: Program
@@ -35,21 +171,6 @@ let program: Program
 let gl: WebGL2RenderingContext | undefined
 
 let oscillator: number | any
-
-const currentPalette = [
-  new Float32Array([1.0, 0.0, 0.0]),
-  new Float32Array([0.0, 0.2, 0.5]),
-  new Float32Array([0.0, 0.3, 0.5]),
-  new Float32Array([0.1, 0.4, 0.5]),
-  new Float32Array([0.2, 0.5, 0.0]),
-  new Float32Array([0.3, 0.6, 0.8]),
-  new Float32Array([0.4, 0.7, 0.1]),
-  new Float32Array([0.5, 0.8, 0.1]),
-  new Float32Array([0.6, 0.9, 0.5]),
-  new Float32Array([0.7, 0.1, 0.4]),
-  new Float32Array([0.8, 0.2, 0.3]),
-  new Float32Array([0.9, 0.3, 0.2])
-]
 
 export type Program = {
   id: WebGLProgram,
@@ -99,13 +220,7 @@ type Primitives = Record<PrimitiveKind, RenderComponent | undefined >
 
 const primitives: Primitives = { cube: undefined }
 
-const components: EComponents[] = []
-
-const lightPos = new Float32Array([0, 0, 10])
-const shininess = 16
-let color : Float32Array = new Float32Array([0.5, 0.5, 0.5])
-
-function setColor (currentColors: number[]) {
+function mixColors (currentColors: number[]) : Float32Array {
   function addV (a: Float32Array, b: Float32Array) {
     a[0] += b[0]
     a[1] += b[1]
@@ -118,7 +233,7 @@ function setColor (currentColors: number[]) {
     a[2] *= scalar
   }
 
-  const palette: Float32Array[] = currentPalette.map(inner => inner.slice())
+  const palette: Float32Array[] = state.currentPalette.map(inner => inner.slice())
 
   for (let i = 0; i < 12; i++) {
     scale(palette[i], currentColors[i])
@@ -128,13 +243,13 @@ function setColor (currentColors: number[]) {
     addV(palette[0], palette[i])
   }
 
-  color = palette[0]
+  return palette[0]
 }
 
-function render (comps: EComponents[], gl: WebGL2RenderingContext, view: Float32Array) {
-  const lightDir = lightPos
+function render (gl: WebGL2RenderingContext, view: Float32Array) {
+  const lightDir = state.lightPos
 
-  comps.forEach(comp => {
+  state.components.forEach(comp => {
     const render = primitives[comp.render]
 
     const scale = matrixScale(comp.scale.x, comp.scale.y, comp.scale.z)
@@ -155,7 +270,7 @@ function render (comps: EComponents[], gl: WebGL2RenderingContext, view: Float32
     ])
 
     const mvp = matrixArrayMult([
-      projection,
+      state.projection,
       mv
     ])
 
@@ -166,38 +281,48 @@ function render (comps: EComponents[], gl: WebGL2RenderingContext, view: Float32
 
     gl.bindVertexArray(render.vao)
 
-    setUniforms(program, { mvp, mv, mn, lightDir, shininess, color })
+    setUniforms(program, {
+      mvp,
+      mv,
+      mn,
+      // FIXME: should be lightPos
+      lightDir,
+      shininess: state.shininess,
+      color: state.color
+    })
 
     gl.drawElements(gl.TRIANGLES, render.count, gl.UNSIGNED_SHORT, 0)
   })
 }
 
-function draw (analyser: AnalyserNode, dataArray: Uint8Array, gl: WebGL2RenderingContext, components: EComponents[]) {
+function draw (gl: WebGL2RenderingContext) {
   gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT)
   // Each item in the array represents the decibel value for a specific
   // frequency. The frequencies are spread linearly from 0 to 1/2 of the sample
   // rate. For example, for 48000 sample rate, the last item of the array will
   // represent the decibel value for 24000 Hz.
 
-  analyser.getByteFrequencyData(dataArray)
+  const dataArray = state.dataArray
 
-  const bms = bmp / 60
+  state.analyser.getByteFrequencyData(state.dataArray)
+
+  const bms = state.audioData.tempoEstimation.tempo / 60
 
   const freq = 1 / bms
   const step = (2 / freq)
 
-  if (playing) {
-    const currentTime = audio.currentTime - bmp_offset
+  if (!state.audio.paused && state.audio.currentTime) {
+    const currentTime = state.audio.currentTime - state.audioData.tempoEstimation.offset
     const d = (currentTime % freq)
 
     for (let i = 0; i < dataArray.length; ++i) {
-      components[i].scale.y = (dataArray[i] / 256) * 3
-      components[i].position.y = components[i].scale.y - 3
+      state.components[i].scale.y = (dataArray[i] / 256) * 3
+      state.components[i].position.y = state.components[i].scale.y - 3
 
-      if (peaks[Math.round(audio.currentTime * 44100)] == 1.0) {
-        components[i].scale.z = 0.13
+      if (state.audioData.peaks[Math.round(state.audio.currentTime * 44100)] == 1.0) {
+        state.components[i].scale.z = 0.13
       } else {
-        components[i].scale.z = 0.1
+        state.components[i].scale.z = 0.1
       }
     }
 
@@ -211,23 +336,23 @@ function draw (analyser: AnalyserNode, dataArray: Uint8Array, gl: WebGL2Renderin
       pos *= -1
     }
 
-    pos *= 0.25
+    pos *= 0.15
 
-    components[oscillator].position.x = pos
+    state.components[oscillator].position.x = pos
 
-    setColor(colors[Math.floor((audio.currentTime * 44100) / 4096)])
+    state.color = mixColors(state.audioData.colors[Math.floor((state.audio.currentTime * 44100) / 4096)])
   }
 
-  const translation = matrixTrans(cameraTrans.position.x, cameraTrans.position.y, cameraTrans.position.z)
+  const translation = matrixTrans(state.cameraTrans.position.x, state.cameraTrans.position.y, state.cameraTrans.position.z)
 
-  const rotationX = rotateXMatrix(cameraTrans.rotation.x)
-  const rotationY = rotateYMatrix(cameraTrans.rotation.y)
-  const rotationZ = rotateZMatrix(cameraTrans.rotation.z)
+  const rotationX = rotateXMatrix(state.cameraTrans.rotation.x)
+  const rotationY = rotateYMatrix(state.cameraTrans.rotation.y)
+  const rotationZ = rotateZMatrix(state.cameraTrans.rotation.z)
 
   const view = matrixArrayMult([translation, rotationX, rotationZ, rotationY])
-  render(components, gl, view)
+  render(gl, view)
 
-  requestAnimationFrame(() => draw(analyser, dataArray, gl, components))
+  requestAnimationFrame(() => draw(gl))
 }
 
 function initWebGL (canvas: HTMLCanvasElement) {
@@ -282,27 +407,11 @@ function updateCanvasSize (gl: WebGLRenderingContext, canvas: HTMLCanvasElement)
 }
 
 // Al cargar la página
-window.onload = function () {
+window.onload = async function () {
   const canvas = document.getElementById('view') as HTMLCanvasElement
 
-  extract_beat().then(result => {
-    const guess = result.tempoEstimation
-
-    bmp = guess.tempo
-    bmp_offset = guess.offset
-
-    colors = result.colors
-    peaks = result.peaks
-
-    const blob = new Blob([result.rawBuffer], { type: 'audio/mp3' })
-    const url = window.URL.createObjectURL(blob)
-
-    audio.src = url
-    audio.controls = true
-
-    const loadingLabel = document.getElementById('loading') as HTMLLabelElement
-    loadingLabel.hidden = true
-  })
+  const defaultSelector = document.getElementById('song0') as HTMLInputElement
+  defaultSelector.checked = true
 
   gl = initWebGL(canvas)
   const programId = initShaders(vshader, fshader, gl)
@@ -327,61 +436,13 @@ window.onload = function () {
 
   primitives.cube = cubeVAO(gl, program)
 
-  audio = document.getElementById('audio-source') as HTMLMediaElement
-  const track = audioContext.createMediaElementSource(audio)
+  state = await initState(canvas.width, canvas.height, 'song0')
 
-  const analyser = audioContext.createAnalyser()
-  analyser.fftSize = fftSize
-
-  const freqStep = ((audioContext.sampleRate / 2) / analyser.frequencyBinCount)
-  const maxFrequency = 5000 / freqStep
-
-  const bufferLength = maxFrequency
-
-  const dataArray = new Uint8Array(bufferLength)
-
-  track.connect(analyser).connect(audioContext.destination)
-
-  const start = -8
-  const end = 8
-  const step = (end - start) / bufferLength
-
-  for (let i = 0; i < bufferLength - 1; ++i) {
-    const pos = start + (step * i)
-    components.push({
-      render: 'cube',
-      position: { x: pos, y: -3.5, z: -5 },
-      rotation: { x: 0 * Math.PI, y: (3 / 2) * Math.PI, z: 0 * Math.PI },
-      scale: { x: 0.09, y: 0.5, z: 0.1 }
-    })
-  }
-
-  oscillator = components.length
-
-  components.push(
-    {
-      render: 'cube',
-      position: { x: 0, y: 4.5, z: -15 },
-      rotation: { x: 0 * Math.PI, y: 0 * Math.PI, z: 0 * Math.PI },
-      scale: { x: 1, y: 2, z: 0.3 }
-    }
-  )
-
-  projection = perspectiveMatrix(canvas.width / canvas.height)
-  draw(analyser, dataArray, gl, components)
-
-  audio.addEventListener('play', function () {
-    audioContext.resume()
-    playing = true
-  })
-
-  audio.addEventListener('pause', function () {
-    playing = false
-  })
+  draw(gl)
 
   canvas.addEventListener('wheel', function (event: WheelEvent) {
     const s = 0.3 * event.deltaY / canvas.height
-    cameraTrans.position.z += -s
+    state.cameraTrans.position.z += -s
   })
 
   let mouseDown : { cx: number, cy: number } | undefined
@@ -400,17 +461,67 @@ window.onload = function () {
     if (mouseDown !== undefined) {
       let { cx, cy } = mouseDown
 
-      cameraTrans.rotation.y += -1 * (cx - event.clientX) / (canvas.width * 5)
-      cameraTrans.rotation.x += -1 * (cy - event.clientY) / (canvas.height * 5)
+      state.cameraTrans.rotation.y += -1 * (cx - event.clientX) / (canvas.width * 5)
+      state.cameraTrans.rotation.x += -1 * (cy - event.clientY) / (canvas.height * 5)
 
       cx = event.clientX
       cy = event.clientY
     }
   })
 
+  const loadSong = document.getElementById('load-song') as HTMLInputElement
+
+  loadSong.addEventListener('change', async function () {
+    console.log(loadSong.files)
+
+    const songList = document.getElementById('song-list') as HTMLElement
+
+    const item = document.createElement('li')
+
+    const input = document.createElement('input') as HTMLInputElement
+    input.type = 'radio'
+    input.name = 'song-selector'
+
+    const songNumber = Object.keys(songs).length
+    const songId = 'song' + songNumber
+    songs[songId] = await loadSong.files[0].arrayBuffer()
+
+    input.id = songId
+
+    input.addEventListener('change', radioInputHandler)
+
+    item.appendChild(input)
+
+    const label = document.createElement('label') as HTMLLabelElement
+    label.innerHTML = loadSong.files[0].name
+    label.htmlFor = songId
+
+    item.appendChild(label)
+    songList.appendChild(item)
+  })
+
+  const radioInputs = document.getElementsByName('song-selector')
+
+  async function radioInputHandler (e: InputEvent) {
+    const radioInput = e.target as HTMLInputElement
+    state.audio.pause()
+    state.audio.controls = false
+
+    const newState = await initState(canvas.width, canvas.height, radioInput.id)
+
+    const audioHolder = document.getElementById('audio-holder')
+    audioHolder.removeChild(state.audio)
+
+    state = newState
+  }
+
+  radioInputs.forEach((radioInput: HTMLInputElement) => {
+    radioInput.addEventListener('change', radioInputHandler)
+  })
+
   for (let i = 0; i < 12; i++) {
     const picker = document.getElementById(`color${i}`) as HTMLInputElement
-    const color = currentPalette[i]
+    const color = state.currentPalette[i]
 
     const bytes = []
 
@@ -422,7 +533,7 @@ window.onload = function () {
 
     picker.addEventListener('change', function () {
       const bytes = new Float32Array(hexStringToBytes(picker.value.slice(1)))
-      currentPalette[i] = bytes.map(b => b / 256)
+      state.currentPalette[i] = bytes.map(b => b / 256)
     })
   }
 }

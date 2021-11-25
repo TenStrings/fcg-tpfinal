@@ -1,14 +1,14 @@
-import song from '../assets/George Street Shuffle.mp3'
+import { statusLabel } from '../index'
 import { guess } from 'web-audio-beat-detector'
 const dsp = require('dsp.js')
 
-type TempoEstimation = {
+export type TempoEstimation = {
   bmp: number
   offset: number
   tempo: number
 }
 
-type ProcessedAudio = {
+export type ProcessedAudio = {
     rawBuffer: ArrayBuffer,
     tempoEstimation: TempoEstimation,
     colors: number[][]
@@ -18,57 +18,73 @@ type ProcessedAudio = {
 const sampleRate = 44100
 const fftSize = 4096
 
-export function extract_beat () : Promise<ProcessedAudio> {
+export function fetchAndAnalyse (song: string) : Promise<ProcessedAudio> {
   const request = new XMLHttpRequest()
   console.log('getting raw audio')
   request.open('GET', song, true)
   request.responseType = 'arraybuffer'
 
-  return new Promise((resolve, reject) => {
-    request.onload = function () {
-      console.log('audio loaded')
-      const OfflineContext = window.OfflineAudioContext
-      const offlineContext = new OfflineContext(2, 60 * sampleRate, sampleRate)
+  statusLabel.innerText = 'Downloading audio'
 
-      // TODO: probably can avoid cloning the buffer by changing the order of
-      // things or something
-      const rawBuffer = request.response.slice()
+  return new Promise((resolve) => {
+    request.onload = async function () {
+      const rawBuffer = request.response
 
-      let decodedBuffer: undefined | AudioBuffer
+      statusLabel.innerText = 'Download finished'
+      const analyzed = await analyseAudio(rawBuffer)
 
-      offlineContext.decodeAudioData(request.response, function (buffer) {
-        // so, buffer here holds the entire song... I should pass this to the
-        // main window and reproduce it from there but this means, I can also
-        // run fft over this I think, and actually... Can I do windowing?
-        const source = offlineContext.createBufferSource()
-        source.buffer = buffer
-
-        decodedBuffer = buffer
-
-        source.connect(offlineContext.destination)
-        source.start(0)
-
-        offlineContext.startRendering()
-      }, reject)
-
-      offlineContext.oncomplete = async function (event) {
-        const buffer = event.renderedBuffer
-
-        const g = await guess(buffer)
-
-        const colors = extractColors(decodedBuffer)
-        const peaks = extractPeaks(decodedBuffer)
-
-        resolve({
-          tempoEstimation: g as unknown as TempoEstimation,
-          rawBuffer,
-          colors,
-          peaks
-        })
-      }
+      resolve(analyzed)
     }
 
     request.send()
+  })
+}
+
+export function analyseAudio (rawBuffer: ArrayBuffer) : Promise<ProcessedAudio> {
+  statusLabel.innerText = 'Analysing audio.'
+
+  const OfflineContext = window.OfflineAudioContext
+  const offlineContext = new OfflineContext(2, 60 * sampleRate, sampleRate)
+
+  const buffer = rawBuffer.slice(0)
+  let decodedBuffer: undefined | AudioBuffer
+
+  return new Promise((resolve) => {
+    offlineContext.decodeAudioData(buffer, function (buffer) {
+      // so, buffer here holds the entire song... I should pass this to the
+      // main window and reproduce it from there but this means, I can also
+      // run fft over this I think, and actually... Can I do windowing?
+      const source = offlineContext.createBufferSource()
+      source.buffer = buffer
+
+      decodedBuffer = buffer
+
+      source.connect(offlineContext.destination)
+      source.start(0)
+
+      offlineContext.startRendering()
+    })
+
+    offlineContext.oncomplete = async function (event) {
+      const buffer = event.renderedBuffer
+
+      const g = await guess(buffer)
+
+      statusLabel.innerText = 'Extracting colors'
+
+      const colors = extractColors(decodedBuffer)
+
+      statusLabel.innerText = 'Extracting peaks'
+
+      const peaks = extractPeaks(decodedBuffer)
+
+      resolve({
+        tempoEstimation: g as unknown as TempoEstimation,
+        rawBuffer,
+        colors,
+        peaks
+      })
+    }
   })
 }
 

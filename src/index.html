@@ -7,59 +7,77 @@
   <body>
     <div class='wrapper'>
       <canvas id='view' width=1024 height=800> </canvas>
-      <div class='controls'>
-        <audio id='audio-source' /> </audio>
-        <label id='loading'> Loading. Please wait. </label>
-        <div id='colors'>
-          <b> Color palette </b>
-          <div> 
-            <input id='color0' type='color' />
-            <label class='pitch-class'> C  </label>
-          </div>
-          <div>
-            <input id='color1' type='color' />
-            <label class='pitch-class'> C# </label> 
-          </div>
-          <div>
-            <input id='color2' type='color' />
-            <label class='pitch-class'> D  </label>
-          </div>
-          <div>
-            <input id='color3' type='color' />
-            <label class='pitch-class'> D# </label>
-          </div>
-          <div>
-            <input id='color4' type='color' />
-            <label class='pitch-class'> E  </label>
-          </div>
-          <div>
-            <input id='color5' type='color' />
-            <label class='pitch-class'> F  </label>
-          </div>
-          <div>
-            <input id='color6' type='color' />
-            <label class='pitch-class'> F# </label>
-          </div>
-          <div>
-            <input id='color7' type='color' />
-            <label class='pitch-class'> G  </label>
-          </div>
-          <div>
-            <input id='color8' type='color' />
-            <label class='pitch-class'> G# </label>
-          </div>
-          <div>
-            <input id='color9' type='color' />
-            <label class='pitch-class'> A  </label>
-          </div>
-          <div>
-            <input id='color10' type='color' />
-            <label class='pitch-class'> A# </label>
-          </div>
-          <div>
-            <input id='color11' type='color' />
-            <label class='pitch-class'> B </label>
-          </div>
+      <div id='controls'>
+        <ul id='song-list'> 
+            <li> 
+                <input type='radio' id='song0' name='song-selector'> 
+                Shades of Spring by Kevin MacLeod 
+            </li>
+            <li> 
+                <input type='radio' id='song1' name='song-selector'> 
+                Werq by Kevin MacLeod 
+            </li>
+        </ul>
+        <input type='file' id='load-song' />
+
+        <label for='audio-source' id='loading'> Loading. Please wait. </label>
+        <div id='audio-holder'>
+            <audio id='audio-source' /> 
+        </div>
+      </div>
+      <div id='color-title'>
+        <b> Color palette </b>
+      </div>
+      <div id='colors-a' class='control'>
+        <div> 
+          <input id='color0' type='color' />
+          <label class='pitch-class'> C  </label>
+        </div>
+        <div>
+          <input id='color1' type='color' />
+          <label class='pitch-class'> C# </label> 
+        </div>
+        <div>
+          <input id='color2' type='color' />
+          <label class='pitch-class'> D  </label>
+        </div>
+        <div>
+          <input id='color3' type='color' />
+          <label class='pitch-class'> D# </label>
+        </div>
+        <div>
+          <input id='color4' type='color' />
+          <label class='pitch-class'> E  </label>
+        </div>
+        <div>
+          <input id='color5' type='color' />
+          <label class='pitch-class'> F  </label>
+        </div>
+      </div>
+      <div id='colors-b' class='control'>
+        <div id='div-color6'>
+          <input id='color6' type='color' />
+          <label class='pitch-class'> F# </label>
+        </div>
+        <div>
+          <input id='color7' type='color' />
+          <label class='pitch-class'> G  </label>
+        </div>
+        <div>
+          <input id='color8' type='color' />
+          <label class='pitch-class'> G# </label>
+        </div>
+        <div>
+          <input id='color9' type='color' />
+          <label class='pitch-class'> A  </label>
+        </div>
+        <div>
+          <input id='color10' type='color' />
+          <label class='pitch-class'> A# </label>
+        </div>
+        <div>
+          <input id='color11' type='color' />
+          <label class='pitch-class'> B </label>
         </div>
       </div>
     </div>
