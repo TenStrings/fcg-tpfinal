@@ -1,4 +1,4 @@
-import { statusLabel } from '../index'
+import { statusLabel } from './index'
 import { guess } from 'web-audio-beat-detector'
 const dsp = require('dsp.js')
 
@@ -20,7 +20,6 @@ const fftSize = 4096
 
 export function fetchAndAnalyse (song: string) : Promise<ProcessedAudio> {
   const request = new XMLHttpRequest()
-  console.log('getting raw audio')
   request.open('GET', song, true)
   request.responseType = 'arraybuffer'
 
@@ -105,12 +104,11 @@ function fftWindows (buffer: Float32Array) {
   const windows: number[][] = []
 
   for (let i = 0; i < buffer.length; i += fftSize) {
-    // take double the size because it's stereo
     const signal = buffer.subarray(i, i + fftSize)
 
     const fft = new dsp.FFT(fftSize, sampleRate)
 
-    if (signal.length == fftSize) {
+    if (signal.length == fftSize) { // is a power of two, basically
       fft.forward(signal)
 
       windows.push(fft.spectrum)
@@ -125,23 +123,17 @@ function fftWindows (buffer: Float32Array) {
 }
 
 function extractPeaks (decodedBuffer: AudioBuffer) {
-  console.log('extracting peaks')
   const buffer = getMonoBuffer(decodedBuffer)
   const resonance = 1
   const lowpass = new dsp.IIRFilter(dsp.DSP.LOWPASS, 150, resonance, sampleRate)
 
   lowpass.process(buffer)
 
-  // TODO: does this work?
-
   const sorted = buffer.map(Math.abs).filter(e => !isNaN(e) && Math.abs(e) != Infinity).sort()
 
   const threshold = sorted[Math.round(sorted.length * (8 / 10))]
 
   const peaks = buffer.map(sample => Math.abs(sample) > threshold ? 1.0 : 0.0)
-
-  console.log(`peak extraction threshold ${threshold}`)
-  console.log(`total peaks ${peaks.reduce((a, b) => a + b)} of ${buffer.length} samples`)
 
   return peaks
 }
@@ -164,7 +156,6 @@ function extractColors (decodedBuffer: AudioBuffer) {
         assert(!isNaN(spectrum[coeff]), `${coeff}, ${i}`)
         const s = spectrum[coeff]
 
-        // FIXME: I actually don't know why I need to square this
         sum += s ** 2
       }
 

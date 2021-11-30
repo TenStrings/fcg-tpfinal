@@ -7,10 +7,8 @@ import {
 } from
   './algebra'
 import { initShaders } from './shader_helpers'
-import { fetchAndAnalyse, analyseAudio, ProcessedAudio } from './music/mod'
+import { fetchAndAnalyse, analyseAudio, ProcessedAudio } from './music'
 import './stylesheets/index.css'
-import song0 from './assets/shades-of-spring-by-kevin-macleod-from-filmmusic-io.mp3'
-import song1 from './assets/werq-by-kevin-macleod-from-filmmusic-io.mp3'
 
 type State = {
   audioData: ProcessedAudio,
@@ -31,10 +29,8 @@ type State = {
 
 let state : State | undefined
 
-const songs: Record<string, string | ArrayBuffer | ProcessedAudio> = {
-  song0: song0,
-  song1: song1
-}
+type LoadedSong = string | ArrayBuffer | ProcessedAudio;
+const songs: Record<string, LoadedSong> = {}
 
 export const statusLabel = document.getElementById('loading') as HTMLLabelElement
 
@@ -117,7 +113,7 @@ async function initState (width: number, height: number, songId: string) : Promi
 
   const bufferLength = maxFrequency
   let xStart = -8
-  let xEnd = -0.5 
+  let xEnd = -0.5
   const xStep = (xEnd - xStart) / bufferLength
 
   const zStart = -5
@@ -132,42 +128,26 @@ async function initState (width: number, height: number, songId: string) : Promi
     const xpos = xEnd - (xStep * i)
     const zpos = zStart + (zStep * i)
 
-    // const z = -1 * Math.sqrt((C ** 2) - (pos ** 2) - 9)
-
-    // (0 -3) -> |(pos, z + 3)|**2 = C**2
-    // pos**2 + (z + 3)**2
-    // pos**2 + z**2 + 9 = C**2
-    // z**2 = C**2 - pos**2 - 9
-    // z = - Math.sqrt(C**2 - pos**2 - 9)
-
     components.push({
       render: 'cube',
       position: { x: xpos, y: -2.5, z: zpos },
-      rotation: { x: 0 * Math.PI, y: -0.4, z: -0 },
+      rotation: { x: 0 * Math.PI, y: -0.4, z: 0 },
       scale: { x: 0.09, y: 0.5, z: 0.1 }
     })
   }
 
-  xStart = 0.5 
+  xStart = 0.5
   xEnd = 8
 
   for (let i = 0; i < bufferLength - 1; ++i) {
     const xpos = xStart + (xStep * i)
     const zpos = zStart + (zStep * i)
 
-    // const z = -1 * Math.sqrt((C ** 2) - (pos ** 2) - 9)
-
-    // (0 -3) -> |(pos, z + 3)|**2 = C**2
-    // pos**2 + (z + 3)**2
-    // pos**2 + z**2 + 9 = C**2
-    // z**2 = C**2 - pos**2 - 9
-    // z = - Math.sqrt(C**2 - pos**2 - 9)
-
     components.push({
       render: 'cube',
       position: { x: xpos, y: -2.5, z: zpos },
       rotation: { x: 0 * Math.PI, y: 0.4, z: 0 },
-      scale: { x: 0.09, y: 0.5, z: 0.2 }
+      scale: { x: 0.09, y: 0.5, z: 0.1 }
     })
   }
 
@@ -348,7 +328,7 @@ function draw (gl: WebGL2RenderingContext) {
     const currentTime = state.audio.currentTime - state.audioData.tempoEstimation.offset
     const d = (currentTime % freq)
 
-    const zoomingOut = state.cameraTrans.position.z > -4.85;
+    const zoomingOut = state.cameraTrans.position.z > -4.85
 
     if (zoomingOut) {
       state.cameraTrans.position.z -= 0.004
@@ -385,7 +365,6 @@ function draw (gl: WebGL2RenderingContext) {
     state.components[state.oscillator].position.x = pos
 
     state.color = mixColors(state.audioData.colors[Math.floor((state.audio.currentTime * 44100) / 4096)])
-
   }
 
   const translation = matrixTrans(state.cameraTrans.position.x, state.cameraTrans.position.y, state.cameraTrans.position.z)
@@ -415,44 +394,11 @@ function initWebGL (canvas: HTMLCanvasElement) {
   return gl
 }
 
-// Funcion para actualizar el tamaño de la ventana cada vez que se hace resize
-function updateCanvasSize (gl: WebGLRenderingContext, canvas: HTMLCanvasElement) {
-  // 1. Calculamos el nuevo tamaño del viewport
-  // canvas.style.width = '100%'
-  // canvas.style.height = '100%'
-
-  // console.log(canvas.style.width)
-  // console.log(canvas.style.height)
-
-  // const pixelRatio = window.devicePixelRatio || 1
-
-  // console.log(pixelRatio)
-
-  // canvas.width = pixelRatio * canvas.clientWidth
-  // canvas.height = pixelRatio * canvas.clientHeight
-
-  // console.log(canvas.clientWidth)
-  // console.log(canvas.clientHeight)
-  // console.log(canvas.width)
-  // console.log(canvas.height)
-
-  // const width = (canvas.width / pixelRatio)
-  // const height = (canvas.height / pixelRatio)
-
-  // canvas.style.width = width + 'px'
-  // canvas.style.height = height + 'px'
-
-  // 2. Lo seteamos en el contexto WebGL
-  console.log(`canvas width ${canvas.clientWidth}`)
-  console.log(`canvas height ${canvas.clientHeight}`)
-  gl.viewport(0, 0, canvas.width, canvas.height)
-
-  // 3. Cambian las matrices de proyección, hay que actualizarlas
-  // UpdateProjectionMatrix()
-}
-
 // Al cargar la página
 window.onload = async function () {
+  const context = require.context('./assets', false, /\.mp3$/)
+  context.keys().forEach(url => addSong(context(url), url.slice(2)))
+
   const canvas = document.getElementById('view') as HTMLCanvasElement
 
   const defaultSelector = document.getElementById('song0') as HTMLInputElement
@@ -474,8 +420,6 @@ window.onload = async function () {
       color: gl.getUniformLocation(programId, 'color')
     }
   }
-
-  // updateCanvasSize(gl, canvas)
 
   gl.clear(gl.COLOR_BUFFER_BIT)
 
@@ -515,11 +459,7 @@ window.onload = async function () {
     }
   })
 
-  const loadSong = document.getElementById('load-song') as HTMLInputElement
-
-  loadSong.addEventListener('change', async function () {
-    console.log(loadSong.files)
-
+  function addSong (loadedSong: LoadedSong, name: string) {
     const songList = document.getElementById('song-list') as HTMLElement
 
     const item = document.createElement('li')
@@ -530,7 +470,7 @@ window.onload = async function () {
 
     const songNumber = Object.keys(songs).length
     const songId = 'song' + songNumber
-    songs[songId] = await loadSong.files[0].arrayBuffer()
+    songs[songId] = loadedSong
 
     input.id = songId
 
@@ -539,11 +479,17 @@ window.onload = async function () {
     item.appendChild(input)
 
     const label = document.createElement('label') as HTMLLabelElement
-    label.innerHTML = loadSong.files[0].name
+    label.innerHTML = name
     label.htmlFor = songId
 
     item.appendChild(label)
     songList.appendChild(item)
+  }
+
+  const loadSong = document.getElementById('load-song') as HTMLInputElement
+  loadSong.addEventListener('change', async function () {
+    const buffer = await loadSong.files[0].arrayBuffer()
+    addSong(buffer, loadSong.files[0].name)
   })
 
   const radioInputs = document.getElementsByName('song-selector')

@@ -18,6 +18,10 @@ li {
   height: 800px;
 }
 
+#loading {
+    font-size: larger;
+}
+
 #song-list {
   margin-left: auto;
   margin-right: auto;

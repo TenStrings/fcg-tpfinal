@@ -12,6 +12,7 @@
   "author": "",
   "license": "ISC",
   "devDependencies": {
+    "@types/webpack-env": "^1.16.3",
     "@typescript-eslint/eslint-plugin": "^4.31.2",
     "@typescript-eslint/parser": "^4.31.2",
     "css-loader": "^6.3.0",
@@ -32,8 +33,6 @@
   },
   "dependencies": {
     "dsp.js": "^1.0.1",
-    "gl-matrix": "^3.4.3",
-    "types-fourier-transform": "^1.1.5",
     "web-audio-beat-detector": "^8.1.22"
   }
 }
